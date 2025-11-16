@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# spaCy
+*.spacy
+
+.cursor/commands/code-review copy.md
+.cursor/commands/code-review.md
+.cursor/commands/cr-changes.md
+.cursor/commands/docs-fix.md
+.cursor/commands/enhance-ci-testing.md
+.cursor/commands/IMPLEMENTATION_SUMMARY.md
+.cursor/commands/increase-coverage.md
+.cursor/commands/pr.md
+.cursor/commands/README.md
+.cursor/commands/review-approve.md
+.cursor/commands/review-skipped-tests.md
+.cursor/commands/show-item-description.md
+.cursor/commands/startworkitem.md
+.cursor/commands/update-readme.md
+.cursor/commands/update-readme.sh
+.cursor/commands/write-e2e-blackbox-tests.md
+.cursor/rules/automation_engineer.mdc
+.cursor/rules/codex.mdc
+.cursor/rules/maintainer.mdc

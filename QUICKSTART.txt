@@ -1,0 +1,147 @@
+================================================================================
+  NATURAL LANGUAGE TO SQL TRANSLATOR - QUICK START
+================================================================================
+
+📦 INSTALLATION
+--------------------------------------------------------------------------------
+1. Install dependencies:
+   $ pip install -r requirements.txt
+
+2. Download spaCy model:
+   $ python -m spacy download en_core_web_sm
+
+3. Verify setup:
+   $ python verify_setup.py
+
+
+🚀 COMMAND LINE TOOL (RECOMMENDED)
+--------------------------------------------------------------------------------
+
+Basic Usage:
+  $ ./nl2sql.py "Show me all assets in site 54"
+
+Pretty JSON:
+  $ ./nl2sql.py --pretty "Find approved assets"
+
+SQL String:
+  $ ./nl2sql.py --sql "Show me all assets in site 54"
+
+Detailed Output:
+  $ ./nl2sql.py --details "How many assets are there?"
+
+From stdin:
+  $ echo "List all assets" | ./nl2sql.py --stdin
+
+Help:
+  $ ./nl2sql.py --help
+
+
+📚 PYTHON LIBRARY
+--------------------------------------------------------------------------------
+
+from nl_to_sql import NLToSQLTranslator
+
+translator = NLToSQLTranslator()
+
+# Get JSON representation
+result = translator.translate("Show me all assets in site 54")
+
+# Get SQL string
+sql = translator.translate_to_sql("Find approved assets")
+
+# Get detailed info
+details = translator.translate_with_details("How many assets?")
+
+
+📖 EXAMPLE QUERIES
+--------------------------------------------------------------------------------
+
+Natural Language                    →  SQL Output
+--------------------------------------------------------------------------------
+"Show me all assets"                →  SELECT * FROM assets
+"Find assets in site 54"            →  SELECT * FROM assets WHERE site = 54
+"Show me approved assets"           →  SELECT * FROM assets WHERE approved = TRUE
+"Find valid assets in site 100"    →  SELECT * FROM assets WHERE valid = TRUE AND site = 100
+"How many assets are there?"        →  SELECT COUNT(*) FROM assets
+
+
+🧪 TESTING
+--------------------------------------------------------------------------------
+
+Run all tests:
+  $ python -m unittest discover tests -v
+
+Run CLI tests:
+  $ ./test_cli.sh
+
+Run examples:
+  $ python example.py
+
+
+📄 DOCUMENTATION
+--------------------------------------------------------------------------------
+
+README.md           - Complete documentation with API reference
+GETTING_STARTED.md  - Quick start guide
+CLI_USAGE.md        - Detailed CLI usage examples
+SUMMARY.md          - Project overview and features
+
+
+🎯 SUPPORTED FEATURES
+--------------------------------------------------------------------------------
+
+✓ Command-line tool with multiple output formats
+✓ Python library for programmatic use
+✓ spaCy-based natural language processing
+✓ Dependency tree analysis for semantic understanding
+✓ Intent classification (SELECT, COUNT, EXISTS)
+✓ Entity recognition (columns, operators, values)
+✓ JSON and SQL output formats
+✓ SELECT queries only (no INSERT/UPDATE/DELETE)
+✓ Single table support (no joins)
+
+
+🔧 ASSETS TABLE COLUMNS
+--------------------------------------------------------------------------------
+
+id, site, resource, timestamp, last_updated, name, display_name,
+approved, valid, ghost, parsed, special_hint, state
+
+
+💡 QUICK TIPS
+--------------------------------------------------------------------------------
+
+1. Always quote your queries in the CLI
+2. Use --pretty for readable JSON during development
+3. Use --sql for direct SQL output
+4. Use --details for debugging
+5. Pipe with --stdin for batch processing
+
+
+🆘 TROUBLESHOOTING
+--------------------------------------------------------------------------------
+
+Error: spaCy model not found
+→ Run: python -m spacy download en_core_web_sm
+
+Error: Empty query provided
+→ Make sure to quote your query: ./nl2sql.py "your query"
+
+Error: Module not found
+→ Run: pip install -r requirements.txt
+
+
+🚀 GET STARTED NOW
+--------------------------------------------------------------------------------
+
+Try this:
+  $ ./nl2sql.py --pretty "Show me all assets in site 54"
+
+Or this:
+  $ python example.py
+
+
+================================================================================
+For more information, see README.md or visit the documentation files.
+================================================================================
+
