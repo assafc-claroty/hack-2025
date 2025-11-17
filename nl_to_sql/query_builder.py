@@ -5,6 +5,7 @@ Query builder for constructing JSON representations of SQL queries.
 from typing import Any, Dict, List, Optional
 
 from .schema import MULTI_VALUE_COLUMNS
+from .sql_formatters import SQLValueFormatterFactory
 
 
 class QueryBuilder:
@@ -18,6 +19,7 @@ class QueryBuilder:
             table_name: Name of the database table
         """
         self.table_name = table_name
+        self.value_formatter = SQLValueFormatterFactory()
 
     def build(
         self,
@@ -165,27 +167,12 @@ class QueryBuilder:
                 op = condition["operator"]
                 val = condition["value"]
 
-                # Format value based on type
-                if isinstance(val, bool):
-                    val_str = str(val).upper()
-                elif isinstance(val, str):
-                    # Escape single quotes to prevent SQL injection
-                    escaped_val = val.replace("'", "''")
-
-                    # Multi-value columns should always use LIKE for pattern matching
-                    # since they contain multiple values (comma-separated, JSON arrays, etc.)
-                    if col in MULTI_VALUE_COLUMNS and op == "=":
-                        op = "LIKE"
-
-                    # Handle LIKE operator
-                    if op == "LIKE":
-                        # Escape LIKE wildcards in user input
-                        escaped_val = escaped_val.replace("%", "\\%").replace("_", "\\_")
-                        val_str = f"'%{escaped_val}%'"
-                    else:
-                        val_str = f"'{escaped_val}'"
-                else:
-                    val_str = str(val)
+                # Format value using appropriate formatter
+                val_str = self.value_formatter.format(val, col, op)
+                
+                # Adjust operator for multi-value columns if needed
+                if col in MULTI_VALUE_COLUMNS and op == "=" and isinstance(val, str):
+                    op = "LIKE"
 
                 where_parts.append(f"{col} {op} {val_str}")
 

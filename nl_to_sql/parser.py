@@ -8,10 +8,10 @@ import spacy
 from spacy.tokens import Doc, Token
 
 from .constants import (
-    MAX_DEPENDENCY_DEPTH,
     MAX_LIMIT_SEARCH_DISTANCE,
     MAX_PROXIMITY_DISTANCE,
 )
+from .dependency_utils import DependencyPathFinder
 from .entity_recognizer import EntityRecognizer
 from .schema import BOOLEAN_COLUMNS
 
@@ -35,6 +35,7 @@ class QueryParser:
             ) from e
 
         self.entity_recognizer = EntityRecognizer(self.nlp)
+        self.dependency_path_finder = DependencyPathFinder()
 
     def parse(self, query: str) -> Dict[str, Any]:
         """
@@ -546,7 +547,7 @@ class QueryParser:
             SQL operator string
         """
         # Check for explicit operators in the dependency path
-        path_tokens = self._get_dependency_path(col_token, val_token)
+        path_tokens = self.dependency_path_finder.find_path(col_token, val_token)
 
         for token in path_tokens:
             # Check for negation
@@ -582,66 +583,6 @@ class QueryParser:
         # Default to equality
         return "="
 
-    def _get_dependency_path(self, token1: Token, token2: Token) -> List[Token]:
-        """
-        Get the dependency path between two tokens.
-
-        Args:
-            token1: First token
-            token2: Second token
-
-        Returns:
-            List of tokens in the path
-        """
-        # Find common ancestor
-        ancestors1 = set([token1] + list(token1.ancestors))
-        ancestors2 = set([token2] + list(token2.ancestors))
-
-        common = ancestors1 & ancestors2
-        if not common:
-            return []
-
-        # Get path through lowest common ancestor
-        try:
-            lca = min(common, key=lambda t: t.i)
-        except (ValueError, AttributeError):
-            return []
-
-        # Build path from token1 to lca with safety limit
-        path = []
-        current = token1
-        depth = 0
-
-        while current != lca and current is not None and depth < MAX_DEPENDENCY_DEPTH:
-            path.append(current)
-            # Check for ROOT token (where head == self)
-            if current.head == current:
-                break
-            current = current.head
-            depth += 1
-
-        if depth >= MAX_DEPENDENCY_DEPTH:
-            # Return partial path if we hit the limit
-            return path
-
-        path.append(lca)
-
-        # Build path from lca to token2 with safety limit
-        path2 = []
-        current = token2
-        depth = 0
-
-        while current != lca and current is not None and depth < MAX_DEPENDENCY_DEPTH:
-            path2.append(current)
-            # Check for ROOT token (where head == self)
-            if current.head == current:
-                break
-            current = current.head
-            depth += 1
-
-        path.extend(reversed(path2))
-
-        return path
 
     def get_dependency_tree_info(self, query: str) -> Dict[str, Any]:
         """
