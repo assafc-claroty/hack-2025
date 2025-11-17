@@ -21,10 +21,24 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Output JSON (default)
   %(prog)s "Show me all assets in site 54"
-  %(prog)s --sql "Find approved assets"
+  
+  # Output SQL only
+  %(prog)s --format sql "Find approved assets"
+  %(prog)s --sql "Find approved assets"  # shorthand
+  
+  # Output both SQL and JSON
+  %(prog)s --format both "List assets in site 100"
+  %(prog)s --format both --pretty "List assets in site 100"
+  
+  # Pretty-print JSON
+  %(prog)s --pretty "Show me all assets"
+  
+  # Get detailed translation info
   %(prog)s --details "How many assets are there?"
-  %(prog)s --pretty "List assets in site 100"
+  
+  # Read from stdin
   echo "Show me all assets" | %(prog)s --stdin
         """
     )
@@ -36,9 +50,16 @@ Examples:
     )
     
     parser.add_argument(
+        "--format",
+        choices=["sql", "json", "both"],
+        default="json",
+        help="Output format: 'sql' for SQL string, 'json' for JSON representation, 'both' for both (default: json)"
+    )
+    
+    parser.add_argument(
         "--sql",
         action="store_true",
-        help="Output SQL string instead of JSON"
+        help="Output SQL string instead of JSON (shorthand for --format sql)"
     )
     
     parser.add_argument(
@@ -86,11 +107,17 @@ Examples:
         print("Error: Empty query provided", file=sys.stderr)
         return 1
     
+    # Determine output format
+    output_format = args.format
+    if args.sql:
+        output_format = "sql"
+    
     # Initialize translator
     try:
         translator = NLToSQLTranslator(
             model_name=args.model,
-            table_name=args.table
+            table_name=args.table,
+            output_format=output_format
         )
     except RuntimeError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -101,19 +128,35 @@ Examples:
     # Translate the query
     try:
         if args.details:
+            # Details mode - output full translation details
             result = translator.translate_with_details(query)
-        elif args.sql:
-            result = translator.translate_to_sql(query)
-            print(result)
-            return 0
+            if args.pretty:
+                print(json.dumps(result, indent=2))
+            else:
+                print(json.dumps(result))
         else:
-            result = translator.translate(query)
-        
-        # Output the result
-        if args.pretty:
-            print(json.dumps(result, indent=2))
-        else:
-            print(json.dumps(result))
+            # Use the new translate_with_format method
+            result = translator.translate_with_format(query, output_format)
+            
+            if output_format == "sql":
+                # SQL string output
+                print(result)
+            elif output_format == "json":
+                # JSON output
+                if args.pretty:
+                    print(json.dumps(result, indent=2))
+                else:
+                    print(json.dumps(result))
+            elif output_format == "both":
+                # Both SQL and JSON
+                if args.pretty:
+                    print("SQL:")
+                    print(result["sql"])
+                    print("\nJSON:")
+                    print(json.dumps(result["json"], indent=2))
+                else:
+                    print(f"SQL: {result['sql']}")
+                    print(f"JSON: {json.dumps(result['json'])}")
         
         return 0
         

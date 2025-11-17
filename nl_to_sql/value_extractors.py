@@ -166,13 +166,47 @@ class IPValueExtractor(BaseValueExtractor):
 
     def extract(self, token: Token, context: ExtractionContext) -> bool:
         """Extract IP address from token."""
-        if not self._is_ip_address(token.text):
+        ip_value, is_prefix = self._parse_ip_address(token.text)
+        if not ip_value:
             return False
 
-        context.add_value(token.text, token.text, "ip_address", token.i, token.i + 1)
+        # Store whether this is a prefix for later operator selection
+        value_type = "ip_prefix" if is_prefix else "ip_address"
+        context.add_value(token.text, ip_value, value_type, token.i, token.i + 1)
         context.add_column("ipv4", "ip", token.i)
         return True
 
+    def _parse_ip_address(self, text: str) -> tuple:
+        """
+        Parse IP address and determine if it's a prefix pattern.
+
+        Returns:
+            Tuple of (ip_value, is_prefix)
+        """
+        if not isinstance(text, str):
+            return (None, False)
+
+        parts = text.split('.')
+
+        # Check for full IP address
+        if len(parts) == IPV4_OCTET_COUNT:
+            try:
+                if all(0 <= int(part) <= 255 for part in parts if part != '*'):
+                    return (text, False)
+            except ValueError:
+                return (None, False)
+
+        # Check for partial IP (e.g., "10.89")
+        if len(parts) >= IPV4_MIN_OCTETS:
+            try:
+                if all(0 <= int(part) <= 255 for part in parts if part.isdigit()):
+                    # This is a prefix pattern
+                    return (text, True)
+            except ValueError:
+                return (None, False)
+
+        return (None, False)
+    
     def _is_ip_address(self, text: str) -> bool:
         """
         Check if text looks like an IP address or partial IP pattern.
@@ -181,26 +215,8 @@ class IPValueExtractor(BaseValueExtractor):
         - Full IPv4: 192.168.1.1
         - Partial patterns: 10.89.* or 10.89
         """
-        if not isinstance(text, str):
-            return False
-
-        parts = text.split('.')
-
-        # Check for full IP address
-        if len(parts) == IPV4_OCTET_COUNT:
-            try:
-                return all(0 <= int(part) <= 255 for part in parts if part != '*')
-            except ValueError:
-                return False
-
-        # Check for partial IP (e.g., "10.89")
-        if len(parts) >= IPV4_MIN_OCTETS:
-            try:
-                return all(0 <= int(part) <= 255 for part in parts if part.isdigit())
-            except ValueError:
-                return False
-
-        return False
+        ip_value, _ = self._parse_ip_address(text)
+        return ip_value is not None
 
 
 class MACValueExtractor(BaseValueExtractor):
@@ -223,10 +239,17 @@ class MACValueExtractor(BaseValueExtractor):
 
 class NumericValueExtractor(BaseValueExtractor):
     """Extracts numeric values (integers and floats)."""
+    
+    # Words that look numeric but shouldn't be extracted
+    SKIP_TOKENS = {"a", "i", "s", "o"}  # Single letters that might be parsed as hex
 
     def extract(self, token: Token, context: ExtractionContext) -> bool:
         """Extract numeric value from token."""
         if not (token.like_num or token.pos_ == "NUM"):
+            return False
+        
+        # Skip single letter tokens that aren't actually numbers
+        if token.lower_ in self.SKIP_TOKENS:
             return False
 
         # Try integer first
@@ -270,10 +293,20 @@ class ProperNounValueExtractor(BaseValueExtractor):
         "microsoft", "linux", "windows", "ubuntu", "debian", "redhat",
         "plc", "scada", "hmi", "dcs"
     }
+    
+    # Words that should not be extracted as values
+    STOP_WORDS = {
+        "ip", "cve", "site", "asset", "assets", "vulnerability", "vulnerabilities",
+        "information", "status", "devices", "device", "network", "system", "systems"
+    }
 
     def extract(self, token: Token, context: ExtractionContext) -> bool:
         """Extract proper noun from token."""
         if token.pos_ != "PROPN":
+            return False
+        
+        # Skip stop words
+        if token.lower_ in self.STOP_WORDS:
             return False
 
         value_type = "vendor" if self._is_vendor_or_model(token.text) else "string"

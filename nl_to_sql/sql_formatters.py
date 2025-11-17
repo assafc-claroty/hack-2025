@@ -59,6 +59,10 @@ class StringValueFormatter(SQLValueFormatter):
 
         if operator == "LIKE":
             escaped = self._escape_like_wildcards(escaped)
+            # Check if this is an IP prefix (partial IP address)
+            if column == "ipv4" and self._is_ip_prefix(value):
+                # For IP prefixes like "10.89", use prefix matching
+                return f"'{escaped}%'"
             return f"'%{escaped}%'"
 
         return f"'{escaped}'"
@@ -70,6 +74,14 @@ class StringValueFormatter(SQLValueFormatter):
     def _escape_like_wildcards(self, value: str) -> str:
         """Escape LIKE wildcards."""
         return value.replace("%", "\\%").replace("_", "\\_")
+    
+    def _is_ip_prefix(self, value: str) -> bool:
+        """Check if value is an IP prefix (partial IP)."""
+        if not isinstance(value, str):
+            return False
+        parts = value.split('.')
+        # IP prefix has 2-3 parts (not full 4)
+        return 2 <= len(parts) < 4 and all(part.isdigit() for part in parts)
 
 
 class DefaultValueFormatter(SQLValueFormatter):

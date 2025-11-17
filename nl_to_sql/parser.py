@@ -52,6 +52,9 @@ class QueryParser:
 
         # Analyze dependency structure
         conditions = self._extract_conditions(doc, entities)
+        
+        # Add domain-specific conditions
+        conditions.extend(self._extract_domain_conditions(doc, entities))
 
         # Determine select columns
         select_columns = self._determine_select_columns(doc, entities)
@@ -87,8 +90,31 @@ class QueryParser:
 
         # Extract conditions using multiple strategies
         conditions = []
-        conditions.extend(self._extract_column_value_conditions(doc, entities))
+        used_values = set()  # Track values across all extraction strategies
+        
+        # Extract column-value conditions
+        col_val_conditions = self._extract_column_value_conditions(doc, entities)
+        conditions.extend(col_val_conditions)
+        
+        # Track which values were used
+        for cond in col_val_conditions:
+            for val_entity in entities["values"]:
+                if val_entity["value"] == cond["value"]:
+                    used_values.add(val_entity["start"])
+        
+        # Extract boolean conditions (don't need value tracking)
         conditions.extend(self._extract_boolean_conditions(doc, entities))
+        
+        # Remove duplicate conditions
+        unique_conditions = []
+        seen = set()
+        for cond in conditions:
+            # Create a hashable key for the condition
+            key = (cond["column"], cond["operator"], str(cond["value"]))
+            if key not in seen:
+                seen.add(key)
+                unique_conditions.append(cond)
+        conditions = unique_conditions
 
         # Apply logic connectors
         if len(conditions) > 1:
@@ -111,6 +137,7 @@ class QueryParser:
         """
         conditions = []
         doc_len = len(doc)
+        used_values = set()  # Track which values have been used
 
         for col_entity in entities["columns"]:
             col_idx = col_entity["start"]
@@ -128,18 +155,27 @@ class QueryParser:
             )
 
             if related_values:
-                conditions.extend(
-                    self._create_conditions_from_values(
-                        column_name, col_token, related_values, doc, entities, doc_len
+                # Filter out already used values
+                new_values = [v for v in related_values if v["start"] not in used_values]
+                if new_values:
+                    new_conditions = self._create_conditions_from_values(
+                        column_name, col_token, new_values, doc, entities, doc_len
                     )
-                )
+                    conditions.extend(new_conditions)
+                    # Mark these values as used
+                    for v in new_values:
+                        used_values.add(v["start"])
             else:
                 # Fallback to proximity-based matching
-                conditions.extend(
-                    self._create_conditions_by_proximity(
-                        column_name, col_idx, doc, entities
-                    )
+                proximity_conditions = self._create_conditions_by_proximity(
+                    column_name, col_idx, doc, entities, used_values
                 )
+                conditions.extend(proximity_conditions)
+                # Mark values as used
+                for cond in proximity_conditions:
+                    for val_entity in entities["values"]:
+                        if val_entity["value"] == cond["value"]:
+                            used_values.add(val_entity["start"])
 
         return conditions
 
@@ -178,6 +214,10 @@ class QueryParser:
             operator = self._infer_operator_from_dependency(
                 col_token, doc[val_idx], doc, entities, column_name
             )
+            
+            # Use LIKE for IP prefixes
+            if val_entity.get("type") == "ip_prefix" and column_name == "ipv4":
+                operator = "LIKE"
 
             condition = {
                 "column": column_name,
@@ -195,7 +235,8 @@ class QueryParser:
         column_name: str,
         col_idx: int,
         doc: Doc,
-        entities: Dict[str, List[Dict[str, Any]]]
+        entities: Dict[str, List[Dict[str, Any]]],
+        used_values: set = None
     ) -> List[Dict[str, Any]]:
         """
         Create conditions using proximity-based matching.
@@ -205,20 +246,45 @@ class QueryParser:
             col_idx: Column token index
             doc: spaCy document
             entities: Recognized entities
+            used_values: Set of already used value indices
 
         Returns:
             List of condition dictionaries
         """
+        if used_values is None:
+            used_values = set()
+            
         conditions = []
 
         for val_entity in entities["values"]:
             val_idx = val_entity["start"]
+            
+            # Skip if already used
+            if val_idx in used_values:
+                continue
 
             # Check if value is reasonably close to column
             if abs(val_idx - col_idx) <= MAX_PROXIMITY_DISTANCE:
+                # Check if there's another column closer to this value
+                closer_column = False
+                for other_col in entities["columns"]:
+                    if other_col["column"] != column_name:
+                        other_dist = abs(val_idx - other_col["start"])
+                        if other_dist < abs(val_idx - col_idx):
+                            closer_column = True
+                            break
+                
+                # Skip if another column is closer to this value
+                if closer_column:
+                    continue
+                
                 operator = self._infer_operator(
                     doc, col_idx, val_idx, entities, column_name
                 )
+                
+                # Use LIKE for IP prefixes
+                if val_entity.get("type") == "ip_prefix" and column_name == "ipv4":
+                    operator = "LIKE"
 
                 condition = {
                     "column": column_name,
@@ -258,9 +324,9 @@ class QueryParser:
             if column_name not in BOOLEAN_COLUMNS:
                 continue
 
-            # Check for negation
+            # Check for negation or exclusion
             col_token = doc[col_idx]
-            is_negated = self._is_negated(col_token)
+            is_negated = self._is_negated(col_token) or self._is_excluded(col_token, doc)
 
             conditions.append({
                 "column": column_name,
@@ -268,6 +334,84 @@ class QueryParser:
                 "value": not is_negated,
             })
 
+        return conditions
+    
+    def _is_excluded(self, token: Token, doc: Doc) -> bool:
+        """
+        Check if a token is preceded by 'excluding' or similar exclusion terms.
+        
+        Args:
+            token: Token to check
+            doc: spaCy document
+            
+        Returns:
+            True if token is being excluded
+        """
+        # Look for "excluding", "except", "without" before the token
+        for i in range(max(0, token.i - 3), token.i):
+            if doc[i].lower_ in ["excluding", "except", "without", "not"]:
+                return True
+        return False
+    
+    def _extract_domain_conditions(
+        self, doc: Doc, entities: Dict[str, List[Dict[str, Any]]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Extract domain-specific conditions (vendors, devices, risk levels, etc.).
+        
+        Args:
+            doc: spaCy processed document
+            entities: Recognized entities
+            
+        Returns:
+            List of condition dictionaries
+        """
+        conditions = []
+        
+        # Handle vendor filters
+        for vendor_entity in entities.get("vendors", []):
+            vendor_name = vendor_entity["vendor"]
+            conditions.append({
+                "column": "vendor",
+                "operator": "LIKE",
+                "value": vendor_name,
+            })
+        
+        # Handle device type filters (e.g., PLCs)
+        for device_entity in entities.get("devices", []):
+            device_type = device_entity["device"]
+            if device_type == "plc":
+                # PLCs could be in asset_type or class_type
+                conditions.append({
+                    "column": "asset_type",
+                    "operator": "LIKE",
+                    "value": "PLC",
+                })
+        
+        # Handle risk level filters
+        for risk_entity in entities.get("risk_levels", []):
+            risk_level = risk_entity["level"]
+            conditions.append({
+                "column": "risk",
+                "operator": "=",
+                "value": risk_level,
+            })
+        
+        # Handle vulnerability keywords
+        # If query mentions "vulnerable" without a specific CVE, add CVE IS NOT NULL condition
+        if entities.get("vuln_keywords") and not any(
+            v.get("type") == "cve" for v in entities.get("values", [])
+        ):
+            # Check if there's no specific CVE mentioned
+            has_cve = any("CVE" in str(v.get("value", "")).upper() 
+                         for v in entities.get("values", []))
+            if not has_cve:
+                conditions.append({
+                    "column": "CVE",
+                    "operator": "IS NOT NULL",
+                    "value": None,
+                })
+        
         return conditions
 
     def _apply_logic_connectors(

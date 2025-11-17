@@ -167,14 +167,18 @@ class QueryBuilder:
                 op = condition["operator"]
                 val = condition["value"]
 
-                # Format value using appropriate formatter
-                val_str = self.value_formatter.format(val, col, op)
-                
-                # Adjust operator for multi-value columns if needed
-                if col in MULTI_VALUE_COLUMNS and op == "=" and isinstance(val, str):
-                    op = "LIKE"
+                # Handle IS NULL / IS NOT NULL operators
+                if op in ["IS NULL", "IS NOT NULL"]:
+                    where_parts.append(f"{col} {op}")
+                else:
+                    # Format value using appropriate formatter
+                    val_str = self.value_formatter.format(val, col, op)
+                    
+                    # Adjust operator for multi-value columns if needed
+                    if col in MULTI_VALUE_COLUMNS and op == "=" and isinstance(val, str):
+                        op = "LIKE"
 
-                where_parts.append(f"{col} {op} {val_str}")
+                    where_parts.append(f"{col} {op} {val_str}")
 
                 # Add logic connector for next condition
                 if i < len(query_json["where"]) - 1:

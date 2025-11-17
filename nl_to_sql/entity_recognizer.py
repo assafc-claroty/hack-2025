@@ -113,6 +113,53 @@ class EntityRecognizer:
             [{"LOWER": "any"}],
             [{"LOWER": "some"}],
         ])
+        
+        # Vendor names
+        self.matcher.add("VENDOR_SIEMENS", [
+            [{"LOWER": "siemens"}],
+        ])
+        
+        self.matcher.add("VENDOR_ROCKWELL", [
+            [{"LOWER": "rockwell"}],
+            [{"LOWER": "allen"}, {"LOWER": "-"}, {"LOWER": "bradley"}],
+            [{"LOWER": "allen"}, {"LOWER": "bradley"}],
+        ])
+        
+        # Device types
+        self.matcher.add("DEVICE_PLC", [
+            [{"LOWER": "plc"}],
+            [{"LOWER": "plcs"}],
+        ])
+        
+        # Risk levels
+        self.matcher.add("RISK_HIGH", [
+            [{"LOWER": "high"}, {"LOWER": {"IN": ["risk", "priority"]}}],
+            [{"LOWER": "high"}, {"LOWER": "-"}, {"LOWER": {"IN": ["risk", "priority"]}}],
+            [{"LOWER": "critical"}],
+        ])
+        
+        # Time-based patterns
+        self.matcher.add("TIME_RECENT", [
+            [{"LOWER": {"IN": ["recent", "recently", "latest", "new", "newly"]}}],
+        ])
+        
+        self.matcher.add("TIME_ACTIVE", [
+            [{"LOWER": {"IN": ["active", "online", "connected"]}}],
+        ])
+        
+        # Vulnerability patterns
+        self.matcher.add("VULN_VULNERABLE", [
+            [{"LOWER": {"IN": ["vulnerable", "vulnerability", "vulnerabilities"]}}],
+        ])
+        
+        self.matcher.add("VULN_AFFECTED", [
+            [{"LOWER": {"IN": ["affected", "impacted"]}}],
+        ])
+        
+        # Exclusion patterns
+        self.matcher.add("EXCLUSION", [
+            [{"LOWER": {"IN": ["excluding", "except", "without"]}}],
+        ])
 
     def recognize(self, doc: Doc) -> Dict[str, List[Dict[str, Any]]]:
         """
@@ -137,6 +184,12 @@ class EntityRecognizer:
             "logic": [],
             "intent": [],
             "quantifiers": [],
+            "vendors": [],
+            "devices": [],
+            "risk_levels": [],
+            "time_modifiers": [],
+            "vuln_keywords": [],
+            "exclusions": [],
         }
 
         for match_id, start, end in matches:
@@ -194,6 +247,58 @@ class EntityRecognizer:
                 entities["quantifiers"].append({
                     "text": span.text,
                     "type": quantifier_type,
+                    "start": start,
+                    "end": end,
+                })
+            
+            elif match_label.startswith("VENDOR_"):
+                vendor_name = match_label.replace("VENDOR_", "").lower()
+                entities["vendors"].append({
+                    "text": span.text,
+                    "vendor": vendor_name,
+                    "start": start,
+                    "end": end,
+                })
+            
+            elif match_label.startswith("DEVICE_"):
+                device_type = match_label.replace("DEVICE_", "").lower()
+                entities["devices"].append({
+                    "text": span.text,
+                    "device": device_type,
+                    "start": start,
+                    "end": end,
+                })
+            
+            elif match_label.startswith("RISK_"):
+                risk_level = match_label.replace("RISK_", "").lower()
+                entities["risk_levels"].append({
+                    "text": span.text,
+                    "level": risk_level,
+                    "start": start,
+                    "end": end,
+                })
+            
+            elif match_label.startswith("TIME_"):
+                time_type = match_label.replace("TIME_", "").lower()
+                entities["time_modifiers"].append({
+                    "text": span.text,
+                    "type": time_type,
+                    "start": start,
+                    "end": end,
+                })
+            
+            elif match_label.startswith("VULN_"):
+                vuln_type = match_label.replace("VULN_", "").lower()
+                entities["vuln_keywords"].append({
+                    "text": span.text,
+                    "type": vuln_type,
+                    "start": start,
+                    "end": end,
+                })
+            
+            elif match_label == "EXCLUSION":
+                entities["exclusions"].append({
+                    "text": span.text,
                     "start": start,
                     "end": end,
                 })

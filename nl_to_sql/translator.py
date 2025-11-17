@@ -2,11 +2,14 @@
 Main translator interface for converting natural language to SQL queries.
 """
 
-from typing import Any, Dict
+import json
+from typing import Any, Dict, Literal
 
 from .intent_classifier import IntentClassifier
 from .parser import QueryParser
 from .query_builder import QueryBuilder
+
+OutputFormat = Literal["sql", "json", "both"]
 
 
 class NLToSQLTranslator:
@@ -23,6 +26,7 @@ class NLToSQLTranslator:
         self,
         model_name: str = "en_core_web_sm",
         table_name: str = "assets",
+        output_format: OutputFormat = "sql",
     ):
         """
         Initialize the translator.
@@ -30,10 +34,12 @@ class NLToSQLTranslator:
         Args:
             model_name: Name of the spaCy model to use
             table_name: Name of the database table
+            output_format: Default output format ("sql", "json", or "both")
         """
         self.parser = QueryParser(model_name=model_name)
         self.intent_classifier = IntentClassifier()
         self.query_builder = QueryBuilder(table_name=table_name)
+        self.output_format = output_format
 
     def translate(self, query: str) -> Dict[str, Any]:
         """
@@ -88,6 +94,107 @@ class NLToSQLTranslator:
         """
         query_json = self.translate(query)
         return self.query_builder.to_sql(query_json)
+    
+    def translate_with_format(
+        self, 
+        query: str, 
+        output_format: OutputFormat = None
+    ) -> str | Dict[str, Any]:
+        """
+        Translate a query and return in the specified format.
+
+        Args:
+            query: Natural language query string
+            output_format: Output format ("sql", "json", or "both"). 
+                          If None, uses the instance's default format.
+
+        Returns:
+            - If format is "sql": SQL query string
+            - If format is "json": Dictionary with JSON representation
+            - If format is "both": Dictionary with both "sql" and "json" keys
+
+        Examples:
+            >>> translator = NLToSQLTranslator(output_format="sql")
+            >>> result = translator.translate_with_format("Show me all assets")
+            >>> print(result)
+            SELECT * FROM assets
+
+            >>> translator = NLToSQLTranslator(output_format="json")
+            >>> result = translator.translate_with_format("Show me all assets")
+            >>> print(result)
+            {'table': 'assets', 'select': ['*'], 'where': [], ...}
+
+            >>> translator = NLToSQLTranslator(output_format="both")
+            >>> result = translator.translate_with_format("Show me all assets")
+            >>> print(result["sql"])
+            SELECT * FROM assets
+            >>> print(result["json"])
+            {'table': 'assets', 'select': ['*'], 'where': [], ...}
+        """
+        # Use instance default if not specified
+        if output_format is None:
+            output_format = self.output_format
+        
+        # Get JSON representation
+        query_json = self.translate(query)
+        
+        # Return based on format
+        if output_format == "sql":
+            return self.query_builder.to_sql(query_json)
+        elif output_format == "json":
+            return query_json
+        elif output_format == "both":
+            return {
+                "sql": self.query_builder.to_sql(query_json),
+                "json": query_json
+            }
+        else:
+            raise ValueError(f"Invalid output_format: {output_format}. Must be 'sql', 'json', or 'both'")
+    
+    def format_output(
+        self, 
+        query_json: Dict[str, Any], 
+        output_format: OutputFormat = None,
+        pretty: bool = False
+    ) -> str:
+        """
+        Format a query JSON into the specified output format as a string.
+
+        Args:
+            query_json: JSON representation of the query
+            output_format: Output format ("sql", "json", or "both")
+            pretty: If True, pretty-print JSON output
+
+        Returns:
+            Formatted string representation
+
+        Example:
+            >>> translator = NLToSQLTranslator()
+            >>> query_json = translator.translate("Show me all assets")
+            >>> print(translator.format_output(query_json, "sql"))
+            SELECT * FROM assets
+            >>> print(translator.format_output(query_json, "json", pretty=True))
+            {
+              "table": "assets",
+              "select": ["*"],
+              ...
+            }
+        """
+        if output_format is None:
+            output_format = self.output_format
+        
+        if output_format == "sql":
+            return self.query_builder.to_sql(query_json)
+        elif output_format == "json":
+            if pretty:
+                return json.dumps(query_json, indent=2)
+            return json.dumps(query_json)
+        elif output_format == "both":
+            sql = self.query_builder.to_sql(query_json)
+            json_str = json.dumps(query_json, indent=2) if pretty else json.dumps(query_json)
+            return f"SQL:\n{sql}\n\nJSON:\n{json_str}"
+        else:
+            raise ValueError(f"Invalid output_format: {output_format}. Must be 'sql', 'json', or 'both'")
 
     def translate_with_details(self, query: str) -> Dict[str, Any]:
         """

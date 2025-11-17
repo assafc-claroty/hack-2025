@@ -121,8 +121,8 @@ COLUMN_SYNONYMS = {
     "state": ["state", "status"],
 
     # Risk and criticality
-    "risk": ["risk", "risk_level"],
-    "criticality": ["criticality", "critical"],
+    "risk": ["risk", "risk_level", "risk-level", "risky"],
+    "criticality": ["criticality", "critical", "severity"],
 
     # Time-based
     "last_entity_seen": ["last_entity_seen", "entity_seen"],
